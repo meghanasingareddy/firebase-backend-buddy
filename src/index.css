@@ -2,14 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* ExpenseFlow Design System - Modern Financial UI */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 248 250% 98%;
     --foreground: 222.2 84% 4.9%;
+    
+    /* Financial App Colors */
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    
+    --expense-red: 0 72% 51%;
+    --income-green: 142 72% 29%;
+    --balance-blue: 221 83% 53%;
+    
+    /* Chart Colors */
+    --chart-groceries: 142 72% 29%;
+    --chart-food: 25 95% 53%;
+    --chart-entertainment: 271 91% 65%;
+    --chart-rent: 221 83% 53%;
+    --chart-health: 339 82% 52%;
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;

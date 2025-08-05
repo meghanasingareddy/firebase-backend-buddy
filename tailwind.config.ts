@@ -28,6 +28,16 @@ export default {
 					DEFAULT: 'hsl(var(--primary))',
 					foreground: 'hsl(var(--primary-foreground))'
 				},
+				expense: 'hsl(var(--expense-red))',
+				income: 'hsl(var(--income-green))',
+				balance: 'hsl(var(--balance-blue))',
+				chart: {
+					groceries: 'hsl(var(--chart-groceries))',
+					food: 'hsl(var(--chart-food))',
+					entertainment: 'hsl(var(--chart-entertainment))',
+					rent: 'hsl(var(--chart-rent))',
+					health: 'hsl(var(--chart-health))'
+				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
 					foreground: 'hsl(var(--secondary-foreground))'
