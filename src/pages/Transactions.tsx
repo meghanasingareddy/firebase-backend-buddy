@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Search, Filter, Plus, Receipt, Utensils, Coffee, Home, Heart, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
-const Transactions = () => {
+const TransactionsContent = () => {
   const allTransactions = [
     { id: 1, name: 'Grocery Store', date: '2024-07-25', amount: -2500, icon: Receipt, category: 'groceries' },
     { id: 2, name: 'Restaurant', date: '2024-07-24', amount: -1200, icon: Utensils, category: 'food' },
@@ -146,6 +147,14 @@ const Transactions = () => {
         </div>
       </Card>
     </div>
+  );
+};
+
+const Transactions = () => {
+  return (
+    <ProtectedRoute>
+      <TransactionsContent />
+    </ProtectedRoute>
   );
 };
 
