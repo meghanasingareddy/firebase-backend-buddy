@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,15 +8,22 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect } from 'react';
+import { signInSchema, signUpSchema, type AuthFormData } from '@/lib/auth-validation';
+import { getSecureErrorMessage, logSecurityEvent } from '@/utils/error-handler';
+import { useSessionTimeout } from '@/hooks/use-session-timeout';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('signin');
+  const [validationErrors, setValidationErrors] = useState<Partial<AuthFormData>>({});
+  const [attemptCount, setAttemptCount] = useState(0);
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // Initialize session timeout monitoring
+  useSessionTimeout();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -25,28 +32,80 @@ const Auth = () => {
     }
   }, [user, navigate]);
 
+  const validateForm = (isSignUp: boolean) => {
+    const schema = isSignUp ? signUpSchema : signInSchema;
+    const result = schema.safeParse({ email, password });
+    
+    if (!result.success) {
+      const errors: Partial<AuthFormData> = {};
+      result.error.issues.forEach((issue) => {
+        if (issue.path[0]) {
+          errors[issue.path[0] as keyof AuthFormData] = issue.message;
+        }
+      });
+      setValidationErrors(errors);
+      return false;
+    }
+    
+    setValidationErrors({});
+    return true;
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
+    // Rate limiting check
+    if (attemptCount >= 5) {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Too Many Attempts",
+        description: "Please wait 15 minutes before trying again.",
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Signed in successfully!",
-      });
-      navigate('/');
+      setLoading(false);
+      return;
     }
+
+    if (!validateForm(false)) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (error) {
+        setAttemptCount(prev => prev + 1);
+        logSecurityEvent('failed_signin_attempt', { 
+          email: email.trim().toLowerCase(),
+          attemptCount: attemptCount + 1,
+          timestamp: new Date().toISOString()
+        });
+        
+        toast({
+          title: "Sign In Failed",
+          description: getSecureErrorMessage(error),
+          variant: "destructive",
+        });
+      } else {
+        setAttemptCount(0);
+        toast({
+          title: "Welcome Back!",
+          description: "You have been signed in successfully.",
+        });
+        navigate('/');
+      }
+    } catch (error) {
+      toast({
+        title: "Network Error",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+      });
+    }
+    
     setLoading(false);
   };
 
@@ -54,49 +113,93 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
 
-    const redirectUrl = `${window.location.origin}/`;
+    if (!validateForm(true)) {
+      setLoading(false);
+      return;
+    }
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl
+    try {
+      const redirectUrl = `${window.location.origin}/`;
+
+      const { error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
+      });
+
+      if (error) {
+        logSecurityEvent('failed_signup_attempt', { 
+          email: email.trim().toLowerCase(),
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        toast({
+          title: "Sign Up Failed",
+          description: getSecureErrorMessage(error),
+          variant: "destructive",
+        });
+      } else {
+        logSecurityEvent('successful_signup', { 
+          email: email.trim().toLowerCase(),
+          timestamp: new Date().toISOString()
+        });
+        
+        toast({
+          title: "Account Created!",
+          description: "Please check your email and click the verification link to complete your registration.",
+        });
+        
+        // Clear form for security
+        setEmail('');
+        setPassword('');
       }
-    });
-
-    if (error) {
+    } catch (error) {
       toast({
-        title: "Error", 
-        description: error.message,
+        title: "Network Error",
+        description: "Please check your connection and try again.",
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Check your email to verify your account!",
-      });
     }
+    
     setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
-    const redirectUrl = `${window.location.origin}/`;
+    
+    try {
+      const redirectUrl = `${window.location.origin}/`;
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl
+        }
+      });
+
+      if (error) {
+        logSecurityEvent('failed_google_signin', { 
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        toast({
+          title: "Google Sign In Failed",
+          description: getSecureErrorMessage(error),
+          variant: "destructive",
+        });
       }
-    });
-
-    if (error) {
+    } catch (error) {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Network Error", 
+        description: "Please check your connection and try again.",
         variant: "destructive",
       });
     }
+    
     setLoading(false);
   };
 
@@ -125,9 +228,18 @@ const Auth = () => {
                     type="email"
                     placeholder="Enter your email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (validationErrors.email) {
+                        setValidationErrors(prev => ({ ...prev, email: undefined }));
+                      }
+                    }}
                     required
+                    className={validationErrors.email ? "border-destructive" : ""}
                   />
+                  {validationErrors.email && (
+                    <p className="text-sm text-destructive">{validationErrors.email}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
@@ -136,9 +248,18 @@ const Auth = () => {
                     type="password"
                     placeholder="Enter your password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (validationErrors.password) {
+                        setValidationErrors(prev => ({ ...prev, password: undefined }));
+                      }
+                    }}
                     required
+                    className={validationErrors.password ? "border-destructive" : ""}
                   />
+                  {validationErrors.password && (
+                    <p className="text-sm text-destructive">{validationErrors.password}</p>
+                  )}
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Signing in..." : "Sign In"}
@@ -155,20 +276,41 @@ const Auth = () => {
                     type="email"
                     placeholder="Enter your email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (validationErrors.email) {
+                        setValidationErrors(prev => ({ ...prev, email: undefined }));
+                      }
+                    }}
                     required
+                    className={validationErrors.email ? "border-destructive" : ""}
                   />
+                  {validationErrors.email && (
+                    <p className="text-sm text-destructive">{validationErrors.email}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Password</Label>
                   <Input
                     id="signup-password"
                     type="password"
-                    placeholder="Create a password"
+                    placeholder="Create a secure password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (validationErrors.password) {
+                        setValidationErrors(prev => ({ ...prev, password: undefined }));
+                      }
+                    }}
                     required
+                    className={validationErrors.password ? "border-destructive" : ""}
                   />
+                  {validationErrors.password && (
+                    <p className="text-sm text-destructive">{validationErrors.password}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Password must contain at least 8 characters with uppercase, lowercase, number, and special character.
+                  </p>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Creating account..." : "Sign Up"}
